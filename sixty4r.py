@@ -12,6 +12,9 @@ import sys
 from urllib import urlopen
 from os.path import abspath, dirname, join, realpath, splitext
 
+class TooBigFileException(Exception):
+    pass
+
 class CssConvert(object):
     RULE_URL_RE = re.compile('\((?P<path>.+)\)')
     MIME_TYPES = {
@@ -20,6 +23,8 @@ class CssConvert(object):
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
     }
+
+    RES_SIZE_THRESHOLD = 2*1024 # 2KB
 
     def __init__(self, in_fname, out_fname):
        self.in_fname = in_fname
@@ -41,12 +46,12 @@ class CssConvert(object):
             return rule
 
         url_path = self.extract_url_path(rule)
-        if self.should_convert(url_path):
+        if self.is_supported(url_path):
             return self.replace_url_path(rule, url_path)
 
         return url_path
 
-    def should_convert(self, url_path):
+    def is_supported(self, url_path):
         base, ext = splitext(url_path) # Get extension
         return ext in self.MIME_TYPES        
 
@@ -61,16 +66,29 @@ class CssConvert(object):
 
     def replace_url_path(self, rule, url_path):
         full_path = self.get_absolute_path(url_path)
-        b64data = self.get_b64_datauri(full_path)
+        try:
+            b64data = self.get_b64_datauri(full_path)
+        except TooBigFileException:
+            # File is too big, don't convert
+            return rule
+
         return rule.replace(url_path, b64data)
 
-    def get_b64_datauri(self, path):
+    def get_data(self, path):
         if path.startswith('http://'):
             # Fetch web resource 
             bdata = urlopen(path).read()
         else:
             # Open local fs file
-            bdata =  open(path).read()
+            bdata = open(path).read()
+
+        return bdata
+
+    def get_b64_datauri(self, path):
+        bdata = self.get_data(path)
+
+        if len(bdata) > self.RES_SIZE_THRESHOLD:
+            raise TooBigFileException
 
         # Convert to one line string
         line_bdata = ''.join(bdata.encode('base64').split('\n'))
