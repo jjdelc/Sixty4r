@@ -41,7 +41,14 @@ class CssConvert(object):
             return rule
 
         url_path = self.extract_url_path(rule)
-        return self.replace_url_path(rule, url_path)
+        if self.should_convert(url_path):
+            return self.replace_url_path(rule, url_path)
+
+        return url_path
+
+    def should_convert(self, url_path):
+        base, ext = splitext(url_path) # Get extension
+        return ext in self.MIME_TYPES        
 
     def extract_url_path(self, rule):
         return self.RULE_URL_RE.search(rule).groupdict()['path']
